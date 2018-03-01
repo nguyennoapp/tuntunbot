@@ -259,15 +259,17 @@ def balance(bot, update):
         amount = balance[key]
         if amount > 0:
             price, value, change = to_quote(key, trade_quote, balance[key])
-            buy_price = get_buy_price('{}/{}'.format(key, trade_quote))
-            if buy_price > 0:
-                profit = (price / buy_price - 1) * 100
+            if value < 0.02:
+                clean_sell(key, trade_quote, update)
             else:
-                profit = 0
-            text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
-                    (key, amount, price, value, change, profit)
-            quote_total += value
-            #clean_sell(key, trade_quote, update)
+                buy_price = get_buy_price('{}/{}'.format(key, trade_quote))
+                if buy_price > 0:
+                    profit = (price / buy_price - 1) * 100
+                else:
+                    profit = 0
+                text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
+                        (key, amount, price, value, change, profit)
+                quote_total += value
     quote_total += balance[trade_quote]
     text += 'Total in %s: %g' % (trade_quote, quote_total)
     update.message.reply_text(text)
@@ -295,8 +297,10 @@ def base(bot, update):
 def budget(bot, update):
     global trade_budget
     trade_budget = update.message.text
-    if not trade_budget.isdigit():
-        update.message.reply_text('{} is not a number.'.format(trade_budget))
+    try:
+        float(trade_budget)
+    except ValueError:
+        update.message.reply_text('{} is not a float.'.format(trade_budget))
         return restart(bot, update)
     reply_keyboard = [['GO', 'Cancel']]
     update.message.reply_text('So, you want to {} {} with budget {} {}!?'.
