@@ -66,104 +66,110 @@ def order_status(order_id, symbol):
 
 
 def buy(symbol, budget, update, panic=0):
-    panic += 1
-    if panic > int(config['CONFIG']['RETRY_LIMIT']):
-        return
-    buy_price, sell_price = price_calculate(symbol)
-    amount = round(int(float(budget) / buy_price / symbol.limits['amount']['min'])
-                   * symbol.limits['amount']['min'], symbol.precision['amount'])
-    if amount < symbol.limits['amount']['min']:
-        return
-    if amount * buy_price < symbol.limits['cost']['min']:
-        return
-    update.message.reply_text('%s buy amount:%.8f price:%.8f total:%.8f' %
-                              (symbol.symbol, amount, buy_price, amount * buy_price))
-    order = exchange.create_limit_buy_order(symbol.symbol, amount, buy_price)
-    time.sleep(1)
-    order_id = order['id']
-    panic_buy = 0
-    while True:
-        status, filled, remaining = order_status(order_id, symbol)
-        if status == 'open':
-            panic_buy += 1
-            if panic_buy > int(config['CONFIG']['RETRY_LIMIT']):
-                exchange.cancel_order(order_id, symbol.symbol)
-                time.sleep(1)
-                buy(symbol, budget, update, panic)
-                break
+    try:
+        panic += 1
+        if panic > int(config['CONFIG']['RETRY_LIMIT']):
+            return
+        buy_price, sell_price = price_calculate(symbol)
+        amount = round(int(float(budget) / buy_price / symbol.limits['amount']['min'])
+                       * symbol.limits['amount']['min'], symbol.precision['amount'])
+        if amount < symbol.limits['amount']['min']:
+            return
+        if amount * buy_price < symbol.limits['cost']['min']:
+            return
+        update.message.reply_text('%s buy amount:%.8f price:%.8f total:%.8f' %
+                                  (symbol.symbol, amount, buy_price, amount * buy_price))
+        order = exchange.create_limit_buy_order(symbol.symbol, amount, buy_price)
+        time.sleep(1)
+        order_id = order['id']
+        panic_buy = 0
+        while True:
+            status, filled, remaining = order_status(order_id, symbol)
+            if status == 'open':
+                panic_buy += 1
+                if panic_buy > int(config['CONFIG']['RETRY_LIMIT']):
+                    exchange.cancel_order(order_id, symbol.symbol)
+                    time.sleep(1)
+                    buy(symbol, budget, update, panic)
+                    break
+                else:
+                    time.sleep(1)
+                    continue
+            elif status == 'parted':
+                update.message.reply_text('%s buy partially filled, amount:%.8f' % (symbol.symbol, filled))
+                panic_buy += 1
+                if panic_buy > int(config['CONFIG']['RETRY_LIMIT']):
+                    exchange.cancel_order(order_id, symbol.symbol)
+                    time.sleep(1)
+                    buy(symbol, remaining * buy_price, update, panic)
+                    break
+                else:
+                    time.sleep(1)
+                    continue
+            elif status == 'closed':
+                update.message.reply_text('%s buy filled, amount:%.8f' % (symbol.symbol, amount))
+                save_buy_price(symbol.symbol, buy_price)
             else:
-                time.sleep(1)
-                continue
-        elif status == 'parted':
-            update.message.reply_text('%s buy partially filled, amount:%.8f' % (symbol.symbol, filled))
-            panic_buy += 1
-            if panic_buy > int(config['CONFIG']['RETRY_LIMIT']):
+                update.message.reply_text('%s buy failed, status:%s' % (symbol.symbol, status))
                 exchange.cancel_order(order_id, symbol.symbol)
-                time.sleep(1)
-                buy(symbol, remaining * buy_price, update, panic)
-                break
-            else:
-                time.sleep(1)
-                continue
-        elif status == 'closed':
-            update.message.reply_text('%s buy filled, amount:%.8f' % (symbol.symbol, amount))
-            save_buy_price(symbol.symbol, buy_price)
-        else:
-            update.message.reply_text('%s buy failed, status:%s' % (symbol.symbol, status))
-            exchange.cancel_order(order_id, symbol.symbol)
-        break
+            break
+    except Exception as e:
+        update.message.reply_text('{} error: {}'.format(symbol.symbol, str(e)))
 
 
 def sell(symbol, update):
-    buy_price, sell_price = price_calculate(symbol)
-    balance = exchange.fetch_balance()
-    amount = round(int(balance['free'][symbol.base] / symbol.limits['amount']['min'])
-                   * symbol.limits['amount']['min'], symbol.precision['amount'])
-    if amount < symbol.limits['amount']['min']:
-        return
-    if amount * sell_price < symbol.limits['cost']['min']:
-        return
-    update.message.reply_text('%s sell amount:%.8f price:%.8f total:%.8f' %
-                (symbol.symbol, amount, sell_price, amount * sell_price))
-    order = exchange.create_limit_sell_order(symbol.symbol, amount, sell_price)
-    time.sleep(1)
-    order_id = order['id']
-    panic_sell = 0
-    while True:
-        status, filled, remaining = order_status(order_id, symbol)
-        if status == 'open':
-            panic_sell += 1
-            if panic_sell > int(config['CONFIG']['RETRY_LIMIT']):
-                exchange.cancel_order(order_id, symbol.symbol)
-                time.sleep(1)
-                sell(symbol, update)
-            else:
-                time.sleep(1)
-                continue
-        elif status == 'parted':
-            update.message.reply_text('%s sell partially filled, amount:%.8f' % (symbol.symbol, filled))
-            panic_sell += 1
-            if panic_sell > int(config['CONFIG']['RETRY_LIMIT']):
-                exchange.cancel_order(order_id, symbol.symbol)
+    try:
+        buy_price, sell_price = price_calculate(symbol)
+        balance = exchange.fetch_balance()
+        amount = round(int(balance['free'][symbol.base] / symbol.limits['amount']['min'])
+                       * symbol.limits['amount']['min'], symbol.precision['amount'])
+        if amount < symbol.limits['amount']['min']:
+            return
+        if amount * sell_price < symbol.limits['cost']['min']:
+            return
+        update.message.reply_text('%s sell amount:%.8f price:%.8f total:%.8f' %
+                    (symbol.symbol, amount, sell_price, amount * sell_price))
+        order = exchange.create_limit_sell_order(symbol.symbol, amount, sell_price)
+        time.sleep(1)
+        order_id = order['id']
+        panic_sell = 0
+        while True:
+            status, filled, remaining = order_status(order_id, symbol)
+            if status == 'open':
+                panic_sell += 1
+                if panic_sell > int(config['CONFIG']['RETRY_LIMIT']):
+                    exchange.cancel_order(order_id, symbol.symbol)
+                    time.sleep(1)
+                    sell(symbol, update)
+                else:
+                    time.sleep(1)
+                    continue
+            elif status == 'parted':
+                update.message.reply_text('%s sell partially filled, amount:%.8f' % (symbol.symbol, filled))
+                panic_sell += 1
+                if panic_sell > int(config['CONFIG']['RETRY_LIMIT']):
+                    exchange.cancel_order(order_id, symbol.symbol)
+                    buy_price = get_buy_price(symbol.symbol)
+                    if buy_price > 0:
+                        update.message.reply_text('%s possible profit: %.8f %.2f%%' %
+                                                  (symbol.symbol, (sell_price - buy_price) * filled, (sell_price / buy_price - 1) * 100))
+                    time.sleep(1)
+                    sell(symbol, update)
+                else:
+                    time.sleep(1)
+                    continue
+            elif status == 'closed':
+                update.message.reply_text('%s sell filled, amount:%.8f' % (symbol.symbol, amount))
                 buy_price = get_buy_price(symbol.symbol)
                 if buy_price > 0:
                     update.message.reply_text('%s possible profit: %.8f %.2f%%' %
-                                              (symbol.symbol, (sell_price - buy_price) * filled, (sell_price / buy_price - 1) * 100))
-                time.sleep(1)
-                sell(symbol, update)
+                                              (symbol.symbol, (sell_price - buy_price) * amount, (sell_price / buy_price - 1) * 100))
             else:
-                time.sleep(1)
-                continue
-        elif status == 'closed':
-            update.message.reply_text('%s sell filled, amount:%.8f' % (symbol.symbol, amount))
-            buy_price = get_buy_price(symbol.symbol)
-            if buy_price > 0:
-                update.message.reply_text('%s possible profit: %.8f %.2f%%' %
-                                          (symbol.symbol, (sell_price - buy_price) * amount, (sell_price / buy_price - 1) * 100))
-        else:
-            update.message.reply_text('%s sell failed, status:%s' % (symbol.symbol, status))
-            exchange.cancel_order(order_id, symbol.symbol)
-        break
+                update.message.reply_text('%s sell failed, status:%s' % (symbol.symbol, status))
+                exchange.cancel_order(order_id, symbol.symbol)
+            break
+    except Exception as e:
+        update.message.reply_text('{} error: {}'.format(symbol.symbol, str(e)))
 
 
 def clean_sell(base, quote, update):
