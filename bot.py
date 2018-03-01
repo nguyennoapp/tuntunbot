@@ -235,6 +235,7 @@ def command(bot, update):
 
 def scan(bot, update):
     exchange.load_markets(reload=True)
+    # to be implemented
     return restart(bot, update)
 
 
@@ -254,7 +255,7 @@ def balance(bot, update):
                 profit = (price / buy_price - 1) * 100
             else:
                 profit = 0
-            if value >= 0.02:
+            if value >= exchange.market('{}/{}'.format(key, trade_quote))['limits']['cost']['min']:
                 text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
                         (key, amount, price, value, change, profit)
                 quote_total += value
