@@ -1,7 +1,7 @@
 # tuntunbot
 Telegram bot for cryptocurrencies trading
 
-![screeenshot](https://gyazo.com/fa0394b7da048f537a078b4e9af925e6)
+![screenshot](https://i.gyazo.com/fa0394b7da048f537a078b4e9af925e6.png)
 
 # Features:
 - Support multi exchanges by using ccxt library (tested on Binance only)
