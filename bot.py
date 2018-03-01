@@ -41,8 +41,11 @@ def save_buy_price(symbol, buy_price):
 def get_buy_price(symbol):
     global buy_prices
     if len(buy_prices) == 0:
-        with open(SAVE_FILE, 'rb') as f:
-            buy_prices = pickle.load(f)
+        try:
+            with open(SAVE_FILE, 'rb') as f:
+                buy_prices = pickle.load(f)
+        except Exception as e:
+            logger.warning('Error: {}'.format(str(e)))
     if symbol in buy_prices:
         return buy_prices[symbol]
     return 0
@@ -185,7 +188,7 @@ def clean_sell(base, quote, update):
         amount = round(int(amount / min_amount) * min_amount, precision)
         if amount < min_amount:
             return
-        if amount * last_price > min_cost:
+        if amount * last_price >= min_cost:
             return
         update.message.reply_text('%s clean sell amount: %.8f' % (symbol, amount))
         exchange.create_market_sell_order(symbol, amount)
@@ -261,13 +264,10 @@ def balance(bot, update):
                 profit = (price / buy_price - 1) * 100
             else:
                 profit = 0
-            if value >= exchange.market('{}/{}'.format(key, trade_quote))['limits']['cost']['min']:
-                text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
-                        (key, amount, price, value, change, profit)
-                quote_total += value
-            else:
-                clean_sell(key, trade_quote, update)
-            time.sleep(0.1)
+            text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
+                    (key, amount, price, value, change, profit)
+            quote_total += value
+            #clean_sell(key, trade_quote, update)
     quote_total += balance[trade_quote]
     text += 'Total in %s: %g' % (trade_quote, quote_total)
     update.message.reply_text(text)
