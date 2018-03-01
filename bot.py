@@ -141,13 +141,13 @@ def sell(symbol, update):
                 time.sleep(1)
                 continue
         elif status == 'parted':
-            update.message.reply_text('`%s sell partially filled, amount:%.8f`' % (symbol.symbol, filled))
+            update.message.reply_text('%s sell partially filled, amount:%.8f' % (symbol.symbol, filled))
             panic_sell += 1
             if panic_sell > int(config['CONFIG']['RETRY_LIMIT']):
                 exchange.cancel_order(order_id, symbol.symbol)
                 buy_price = get_buy_price(symbol.symbol)
                 if buy_price > 0:
-                    update.message.reply_text('`%s possible profit: %.8f %.2f%%`' %
+                    update.message.reply_text('%s possible profit: %.8f %.2f%%' %
                                               (symbol.symbol, (sell_price - buy_price) * filled, (sell_price / buy_price - 1) * 100))
                 time.sleep(1)
                 sell(symbol, update)
@@ -155,10 +155,10 @@ def sell(symbol, update):
                 time.sleep(1)
                 continue
         elif status == 'closed':
-            update.message.reply_text('`%s sell filled, amount:%.8f`' % (symbol.symbol, amount))
+            update.message.reply_text('%s sell filled, amount:%.8f' % (symbol.symbol, amount))
             buy_price = get_buy_price(symbol.symbol)
             if buy_price > 0:
-                update.message.reply_text('`%s possible profit: %.8f %.2f%%`' %
+                update.message.reply_text('%s possible profit: %.8f %.2f%%' %
                                           (symbol.symbol, (sell_price - buy_price) * amount, (sell_price / buy_price - 1) * 100))
         else:
             update.message.reply_text('%s sell failed, status:%s' % (symbol.symbol, status))
