@@ -271,7 +271,7 @@ def command(bot, update):
     global trade_type
     cmd = update.message.text.lower()
     if cmd == 'scan':
-        update.message.reply_text('I\'m going scan the market to find potential symbol.')
+        update.message.reply_text('I\'m going scan the market to find signals, please wait for a minute.')
         return scan(bot, update)
     elif cmd == 'balance':
         update.message.reply_text('I see, you wanna check your account balance.')
