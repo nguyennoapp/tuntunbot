@@ -18,6 +18,7 @@ from sklearn.preprocessing import MinMaxScaler
 import keras.models
 from keras.models import Sequential, load_model
 from keras.layers import LSTM, Dense
+import tensorflow as tf
 
 QUOTE, COMMAND, BASE, BUDGET, CONFIRM = range(5)
 SAVE_FILE = '{}/buy_prices.dict'.format(os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +29,7 @@ config = ConfigParser()
 config.read(CONFIG_FILE)
 exchange = ccxt.binance({'apiKey': config['CONFIG']['API_KEY'], 'secret': config['CONFIG']['API_SECRET']})
 model = load_model(MODEL_FILE)
+graph = tf.get_default_graph()
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 buy_prices = {}
@@ -222,7 +224,7 @@ def to_quote(base, quote, amount):
     return ticker['last'], ticker['last'] * amount, ticker['change']
 
 
-def ml_detect(symbol, model, time_frame):
+def ml_detect(symbol, time_frame):
     data_base = exchange.fetch_ohlcv(symbol.symbol, time_frame)
     df = DataFrame(data_base, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
     df.set_index('time')
@@ -240,7 +242,8 @@ def ml_detect(symbol, model, time_frame):
         output_data = input_data[:, 0]
         mean = np.mean(output_data, axis=0)
         last_change = output_data[-1] - mean
-        predict_change = model.predict(np.array([input_data[-5:]]), batch_size=1)[0][0] - mean
+        with graph.as_default():
+            predict_change = model.predict(np.array([input_data[-5:]]), batch_size=1)[0][0] - mean
         if last_change < 0 < .1 < predict_change:
             return 'buy'
         elif last_change > 0 > -.1 > predict_change:
@@ -276,7 +279,7 @@ def command(bot, update):
         thread = threading.Thread(target=scan, args=(update,))
         thread.start()
     elif cmd == 'balance':
-        update.message.reply_text('I see, you wanna check your account balance.')
+        update.message.reply_text('I see, you wanna check your account balance, wait a moment.')
         thread = threading.Thread(target=balance, args=(update,))
         thread.start()
     elif cmd == 'buy' or cmd == 'sell':
@@ -292,9 +295,9 @@ def scan(update):
         symbol = Symbol(exchange.market(key))
         if symbol.quote == trade_quote:
             change = exchange.fetch_ticker(symbol.symbol)['change']
-            signal_1h = ml_detect(symbol, model, '1h')
-            signal_4h = ml_detect(symbol, model, '4h')
-            signal_1d = ml_detect(symbol, model, '1d')
+            signal_1h = ml_detect(symbol, '1h')
+            signal_4h = ml_detect(symbol, '4h')
+            signal_1d = ml_detect(symbol, '1d')
             if signal_1h == signal_4h == signal_1d == 'neutral':
                 continue
             text = '%s - change 24h: %.2f%%  \nSignal: 1h: %s - 4h: %s - 1d: %s' % \
