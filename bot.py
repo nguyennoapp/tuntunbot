@@ -271,7 +271,7 @@ def command(bot, update):
     global trade_type
     cmd = update.message.text.lower()
     if cmd == 'scan':
-        update.message.reply_text('I\'m going scan the market to find signals, please wait for a minute.')
+        update.message.reply_text('I\'m going scan the market to find signals, please wait a few minutes.')
         thread = threading.Thread(target=scan, args=(update,))
         thread.start()
     elif cmd == 'balance':
@@ -297,7 +297,7 @@ def scan(update):
             signal_1d = ml_detect(symbol, model, '1d')
             if signal_1h == signal_4h == signal_1d == 'neutral':
                 continue
-            text = '%s - change 24h: %.2f%%  \nSignal: 1h: %s - 4h: %s - 1d:%s  \n' % \
+            text = '%s - change 24h: %.2f%%  \nSignal: 1h: %s - 4h: %s - 1d: %s' % \
                    (symbol.symbol, change, signal_1h.upper(), signal_4h.upper(), signal_1d.upper())
             update.message.reply_text(text)
 
