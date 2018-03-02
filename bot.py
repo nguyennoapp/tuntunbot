@@ -405,7 +405,7 @@ def error(bot, update, error):
 
 def main():
     exchange.load_markets()
-    updater = Updater(config['CONFIG']['BOT_TOKEN'])
+    updater = Updater(config['CONFIG']['BOT_TOKEN'], request_kwargs={'read_timeout': 30, 'connect_timeout': 60})
     dp = updater.dispatcher
     handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
