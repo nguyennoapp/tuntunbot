@@ -196,13 +196,20 @@ def clean_sell(base, quote, update):
         return
 
 
+def buy_bnb(quote, update):
+    symbol = 'BNB/{}'.format(quote)
+    last_price = exchange.fetch_ticker(symbol)['last']
+    min_cost = exchange.market(symbol)['limits']['cost']['min']
+    amount = int(min_cost / last_price)
+    if exchange.fetch_balance()['free']['BNB'] < amount:
+        exchange.create_market_buy_order(symbol, amount)
+        update.message.reply_text('Buy BNB for fee, amount: %g'.format(amount))
+
+
 def to_quote(base, quote, amount):
-    try:
-        symbol = '{}/{}'.format(base, quote)
-        ticker = exchange.fetch_ticker(symbol)
-        return ticker['last'], ticker['last'] * amount, ticker['change']
-    except Exception:
-        return 0, 0, 0
+    symbol = '{}/{}'.format(base, quote)
+    ticker = exchange.fetch_ticker(symbol)
+    return ticker['last'], ticker['last'] * amount, ticker['change']
 
 
 def start(bot, update):
@@ -227,15 +234,15 @@ def restart(bot, update):
 
 def command(bot, update):
     global trade_type
-    cmd = update.message.text
-    if cmd == 'Scan':
-        update.message.reply_text('I\'m going scan market to find profitable trade.')
+    cmd = update.message.text.lower()
+    if cmd == 'scan':
+        update.message.reply_text('I\'m going scan the market to find potential symbol.')
         return scan(bot, update)
-    elif cmd == 'Balance':
-        update.message.reply_text('I see, you want to check your account balance.')
+    elif cmd == 'balance':
+        update.message.reply_text('I see, you wanna check your account balance.')
         return balance(bot, update)
-    elif cmd == 'Buy' or cmd == 'Sell':
-        trade_type = cmd.lower()
+    elif cmd == 'buy' or cmd == 'sell':
+        trade_type = cmd
         update.message.reply_text('Which symbol do you want to {}, sir?'.format(trade_type))
         return BASE
     else:
@@ -244,7 +251,21 @@ def command(bot, update):
 
 def scan(bot, update):
     exchange.load_markets(reload=True)
-    # to be implemented
+    text = 'Potential symbols:  \n'
+    for key in exchange.symbols:
+        symbol = Symbol(exchange.market(key))
+        if symbol.quote == trade_quote:
+            change = exchange.fetch_ticker(symbol.symbol)['change']
+            if 0 < change < 5:
+                text += '%s change: %.2f%%  ' % (symbol.symbol, change)
+                order_book = exchange.fetch_order_book(symbol.symbol)
+                bid = order_book['bids'][0][0]
+                ask = order_book['asks'][0][0]
+                gap = (ask / bid - 1) * 100
+                if gap > 1:
+                    text += 'ask / bid = %.2f%%  ' % gap
+                text += '\n'
+    update.message.reply_text(text)
     return restart(bot, update)
 
 
@@ -254,22 +275,24 @@ def balance(bot, update):
     text = 'Total balance in %s:  \n' % trade_quote
     text += '%s amount: %g  \n' % (trade_quote, balance[trade_quote])
     for key in sorted(balance.keys()):
-        if key in ['USDT', 'BTC', 'ETH', 'BNB']:
-            continue
         amount = balance[key]
         if amount > 0:
-            price, value, change = to_quote(key, trade_quote, balance[key])
-            if value < 0.02:
-                clean_sell(key, trade_quote, update)
-            else:
-                buy_price = get_buy_price('{}/{}'.format(key, trade_quote))
-                if buy_price > 0:
-                    profit = (price / buy_price - 1) * 100
+            try:
+                price, value, change = to_quote(key, trade_quote, balance[key])
+                min_cost = exchange.market('{}/{}'.format(key, trade_quote))['limits']['cost']['min']
+                if value < min_cost:
+                    clean_sell(key, trade_quote, update)
                 else:
-                    profit = 0
-                text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
-                        (key, amount, price, value, change, profit)
-                quote_total += value
+                    buy_price = get_buy_price('{}/{}'.format(key, trade_quote))
+                    if buy_price > 0:
+                        profit = (price / buy_price - 1) * 100
+                    else:
+                        profit = 0
+                    text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
+                            (key, amount, price, value, change, profit)
+                    quote_total += value
+            except Exception:
+                continue
     quote_total += balance[trade_quote]
     text += 'Total in %s: %g' % (trade_quote, quote_total)
     update.message.reply_text(text)
@@ -315,6 +338,7 @@ def confirm(bot, update):
     global trade_budget
     cmd = update.message.text
     if cmd == 'GO':
+        buy_bnb(trade_quote, update)
         symbol = Symbol(exchange.market('{}/{}'.format(trade_base, trade_quote)))
         if trade_type == 'buy':
             thread = threading.Thread(target=buy, args=(symbol, float(trade_budget), update))
