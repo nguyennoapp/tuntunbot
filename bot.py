@@ -272,22 +272,22 @@ def command(bot, update):
     cmd = update.message.text.lower()
     if cmd == 'scan':
         update.message.reply_text('I\'m going scan the market to find signals, please wait for a minute.')
-        return scan(bot, update)
+        thread = threading.Thread(target=scan, args=(update,))
+        thread.start()
     elif cmd == 'balance':
         update.message.reply_text('I see, you wanna check your account balance.')
-        return balance(bot, update)
+        thread = threading.Thread(target=balance, args=(update,))
+        thread.start()
     elif cmd == 'buy' or cmd == 'sell':
         trade_type = cmd
         update.message.reply_text('Which symbol do you want to {}, sir?'.format(trade_type))
         return BASE
-    else:
-        return restart(bot, update)
+    return restart(bot, update)
 
 
-def scan(bot, update):
+def scan(update):
     exchange.load_markets(reload=True)
     model = load_model(MODEL_FILE)
-    text = 'Potential symbols:  \n'
     for key in exchange.symbols:
         symbol = Symbol(exchange.market(key))
         if symbol.quote == trade_quote:
@@ -297,13 +297,12 @@ def scan(bot, update):
             signal_1d = ml_detect(symbol, model, '1d')
             if signal_1h == signal_4h == signal_1d == 'neutral':
                 continue
-            text += '%s change 24h: %.2f%% signal 1h: %s 4h: %s 1d: %s  \n' % \
-                    (symbol.symbol, change, signal_1h, signal_4h, signal_1d)
-    update.message.reply_text(text)
-    return restart(bot, update)
+            text = '%s - change 24h: %.2f%%  \nSignal: 1h: %s - 4h: %s - 1d:%s  \n' % \
+                   (symbol.symbol, change, signal_1h.upper(), signal_4h.upper(), signal_1d.upper())
+            update.message.reply_text(text)
 
 
-def balance(bot, update):
+def balance(update):
     balance = exchange.fetch_balance()['total']
     quote_total = 0
     text = 'Total balance in %s:  \n' % trade_quote
@@ -322,7 +321,7 @@ def balance(bot, update):
                         profit = (price / buy_price - 1) * 100
                     else:
                         profit = 0
-                    text += '%s amount: %g price: %g value: %g change: %.2f%% profit: %.2f%%  \n' % \
+                    text += '%s - amount: %g - price: %g - value: %g  \nChange 24h: %.2f%% - profit: %.2f%%  \n' % \
                             (key, amount, price, value, change, profit)
                     quote_total += value
             except Exception:
@@ -330,7 +329,6 @@ def balance(bot, update):
     quote_total += balance[trade_quote]
     text += 'Total in %s: %g' % (trade_quote, quote_total)
     update.message.reply_text(text)
-    return restart(bot, update)
 
 
 def base(bot, update):
