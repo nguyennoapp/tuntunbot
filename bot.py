@@ -27,6 +27,7 @@ CONFIG_FILE = '{}/config.ini'.format(os.path.dirname(os.path.abspath(__file__)))
 config = ConfigParser()
 config.read(CONFIG_FILE)
 exchange = ccxt.binance({'apiKey': config['CONFIG']['API_KEY'], 'secret': config['CONFIG']['API_SECRET']})
+model = load_model(MODEL_FILE)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 buy_prices = {}
@@ -287,7 +288,6 @@ def command(bot, update):
 
 def scan(update):
     exchange.load_markets(reload=True)
-    model = load_model(MODEL_FILE)
     for key in exchange.symbols:
         symbol = Symbol(exchange.market(key))
         if symbol.quote == trade_quote:
@@ -404,7 +404,7 @@ def error(bot, update, error):
 
 
 def main():
-    exchange.load_markets()
+    exchange.load_markets(reload=True)
     updater = Updater(config['CONFIG']['BOT_TOKEN'], request_kwargs={'read_timeout': 30, 'connect_timeout': 60})
     dp = updater.dispatcher
     handler = ConversationHandler(
