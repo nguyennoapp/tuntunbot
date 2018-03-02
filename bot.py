@@ -11,8 +11,17 @@ from random import randint
 from telegram import (ReplyKeyboardMarkup, ReplyKeyboardRemove)
 from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, RegexHandler, ConversationHandler)
 
+import numpy as np
+from pandas import DataFrame
+from sklearn.preprocessing import MinMaxScaler
+
+import keras.models
+from keras.models import Sequential, load_model
+from keras.layers import LSTM, Dense
+
 QUOTE, COMMAND, BASE, BUDGET, CONFIRM = range(5)
 SAVE_FILE = '{}/buy_prices.dict'.format(os.path.dirname(os.path.abspath(__file__)))
+MODEL_FILE = '{}/lstm.h5'.format(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_FILE = '{}/config.ini'.format(os.path.dirname(os.path.abspath(__file__)))
 
 config = ConfigParser()
@@ -212,6 +221,32 @@ def to_quote(base, quote, amount):
     return ticker['last'], ticker['last'] * amount, ticker['change']
 
 
+def ml_detect(symbol, model, time_frame):
+    data_base = exchange.fetch_ohlcv(symbol.symbol, time_frame)
+    df = DataFrame(data_base, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+    df.set_index('time')
+    df.replace({0: np.nan}, inplace=True)
+    df['price'] = df[['open', 'high', 'low', 'close']].mean(axis=1)
+    df['price_change'] = df['price'].pct_change()
+    df['volume_change'] = df['volume'].pct_change()
+    df = df.assign(**{'volatility': lambda x: (x['high'] - x['low']) / x['open']})
+    df = df.assign(**{'convergence': lambda x: (x['open'] - x['close']) / (x['high'] - x['low'])})
+    df = df.assign(**{'predisposition': lambda x: 1 - 2 * (x['high'] - x['close']) / (x['high'] - x['low'])})
+    df.dropna(axis=0, how='any', inplace=True)
+    sc = MinMaxScaler(feature_range=(-1, 1))
+    input_data = sc.fit_transform(df[['price_change', 'volume_change', 'volatility', 'convergence', 'predisposition']])
+    if len(input_data) >= 5:
+        output_data = input_data[:, 0]
+        mean = np.mean(output_data, axis=0)
+        last_change = output_data[-1] - mean
+        predict_change = model.predict(np.array([input_data[-5:]]), batch_size=1)[0][0] - mean
+        if last_change < 0 < .1 < predict_change:
+            return 'buy'
+        elif last_change > 0 > -.1 > predict_change:
+            return 'sell'
+    return 'neutral'
+
+
 def start(bot, update):
     reply_keyboard = [['USDT', 'BTC', 'ETH', 'BNB']]
     update.message.reply_text('Hello! Set your quote first, sir.',
@@ -251,20 +286,19 @@ def command(bot, update):
 
 def scan(bot, update):
     exchange.load_markets(reload=True)
+    model = load_model(MODEL_FILE)
     text = 'Potential symbols:  \n'
     for key in exchange.symbols:
         symbol = Symbol(exchange.market(key))
         if symbol.quote == trade_quote:
             change = exchange.fetch_ticker(symbol.symbol)['change']
-            if 0 < change < 5:
-                text += '%s change: %.2f%%  ' % (symbol.symbol, change)
-                order_book = exchange.fetch_order_book(symbol.symbol)
-                bid = order_book['bids'][0][0]
-                ask = order_book['asks'][0][0]
-                gap = (ask / bid - 1) * 100
-                if gap > 1:
-                    text += 'ask / bid = %.2f%%  ' % gap
-                text += '\n'
+            signal_1h = ml_detect(symbol, model, '1h')
+            signal_4h = ml_detect(symbol, model, '4h')
+            signal_1d = ml_detect(symbol, model, '1d')
+            if signal_1h == signal_4h == signal_1d == 'neutral':
+                continue
+            text += '%s change 24h: %.2f%% signal 1h: %s 4h: %s 1d: %s  \n' % \
+                    (symbol.symbol, change, signal_1h, signal_4h, signal_1d)
     update.message.reply_text(text)
     return restart(bot, update)
 
