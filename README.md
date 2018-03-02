@@ -5,7 +5,9 @@ Telegram bot for cryptocurrencies trading
 
 # Features:
 - Support multi exchanges by using ccxt library (tested on Binance only)
-- Scan market (to be implemented), check account balance, buy and sell by Telegram bot commands
+- Scan market using deep-learning to find buy/sell signal
+- Report account balance
+- Buy and sell with the best possible prices
 
 # Installation:
 - Create Binance account
