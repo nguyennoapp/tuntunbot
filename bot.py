@@ -203,7 +203,7 @@ def buy_bnb(quote, update):
     amount = int(min_cost / last_price)
     if exchange.fetch_balance()['free']['BNB'] < amount:
         exchange.create_market_buy_order(symbol, amount)
-        update.message.reply_text('Buy BNB for fee, amount: %g'.format(amount))
+        update.message.reply_text('Buy BNB for fee, amount: %g' % amount)
 
 
 def to_quote(base, quote, amount):
