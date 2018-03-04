@@ -104,6 +104,7 @@ def confirm(bot, update):
     global trade_budget
     cmd = update.message.text
     if cmd == 'GO':
+        tun.recharge_fee('BNB', trade_quote)
         symbol = '{}/{}'.format(trade_base, trade_quote)
         if trade_type == 'buy':
             thread = threading.Thread(target=tun.buy, args=(symbol, float(trade_budget), update))

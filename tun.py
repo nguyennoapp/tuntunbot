@@ -12,6 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from keras.models import load_model
 
 RETRY_LIMIT = 10
+TIME_FRAMES = ['5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
 SAVE_FILE = '{}/buy_prices.dict'.format(os.path.dirname(os.path.abspath(__file__)))
 MODEL_FILE = '{}/lstm.h5'.format(os.path.dirname(os.path.abspath(__file__)))
 
@@ -320,7 +321,7 @@ class Tun(object):
                 return 'SELL'
         return 'neutral'
 
-    def scan(self, quote, update, time_frames=['15m', '1h', '4h', '1d'], stop_loss=-5, take_profit=5, auto_st=False):
+    def scan(self, quote, update, time_frames=TIME_FRAMES, stop_loss=-5, take_profit=5, auto_st=False):
         self.exchange.load_markets(reload=True)
         for symbol in self.exchange.symbols:
             if symbol.split('/')[1] == quote:
@@ -331,7 +332,7 @@ class Tun(object):
                 dls = []
                 ta_text = ''
                 dl_text = ''
-                buy_score = 0
+                score = 0
                 for time_frame in time_frames:
                     time.sleep(0.1)
                     t = self.ta_signal(symbol, time_frame)
@@ -341,20 +342,19 @@ class Tun(object):
                     ta_text += '{}: {}, '.format(time_frame, t)
                     dl_text += '{}: {}, '.format(time_frame, d)
                     if t == 'BUY':
-                        buy_score += 1
+                        score += 1
                     elif t == 'SELL':
-                        buy_score -= 1
+                        score += -1
                     if d == 'BUY':
-                        buy_score += 1
+                        score += 2
                     elif d == 'SELL':
-                        buy_score -= 1
-                buy_score = buy_score / len(time_frames) / 2 * 100
-                if st != 'neutral' or buy_score > 0:
+                        score += -2
+                if st != 'neutral' or score <= -2 or score >= 2:
                     text = '%s change(24h): %.2f%%  \n' \
                            'ST signal: %s  \n' \
                            'TA signal: %s  \n' \
                            'DL signal: %s  \n' \
-                           'BUY score: %d%%'% (symbol, change, st, ta_text, dl_text, buy_score)
+                           'Score: %d%%' % (symbol, change, st, ta_text, dl_text, score / len(time_frames) / 3 * 100)
                     update.message.reply_text(text)
                     if auto_st:
                         self.sell(symbol, update)
