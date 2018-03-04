@@ -14,7 +14,15 @@ Telegram bot for cryptocurrencies trading
 - Create Binance API with trading permission
 - Deposit some
 - Install all needed python packages by using pip
+- Build ta-lib and tensor-flow from sources (talib python and keras are just api wrapper built on top of them)
 - Create Telegram bot
 - Edit config.ini
 - Run bot.py
 - Start with bot
+
+# Reference:
+https://github.com/nguyennoapp/mimibot
+
+# DISCLAIMER:
+USE THIS BOT AND TRADE IN YOUR OWN RISK.
+The crypto market is going crazy, you may gain some but also may lose a lot, be careful!
