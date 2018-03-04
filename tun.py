@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from keras.models import load_model
 
 RETRY_LIMIT = 10
-TIME_FRAMES = ['5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w']
+TIME_FRAMES = ['1h', '2h', '4h', '6h', '8h']
 SAVE_FILE = '{}/buy_prices.dict'.format(os.path.dirname(os.path.abspath(__file__)))
 MODEL_FILE = '{}/lstm.h5'.format(os.path.dirname(os.path.abspath(__file__)))
 
