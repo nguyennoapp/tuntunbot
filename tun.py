@@ -6,10 +6,12 @@ import time
 import numpy as np
 import talib.abstract as ta
 import tensorflow as tf
+import threading
 from random import randint
 from pandas import DataFrame, Series
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import load_model
+from telegram import ParseMode
 
 RETRY_LIMIT = 10
 TIME_FRAMES = ['1h', '2h', '4h', '6h', '8h']
@@ -148,8 +150,9 @@ class Tun(object):
                     self.exchange.cancel_order(order_id, symbol)
                     buy_price = self.get_buy_price(symbol)
                     if buy_price > 0:
-                        update.message.reply_text('%s possible profit: %.8f %.2f%%' % (
-                        symbol, (sell_price - buy_price) * filled, (sell_price / buy_price - 1) * 100))
+                        update.message.reply_text('%s possible profit: %.8f `%.2f%%`' %
+                                                  (symbol, (sell_price - buy_price) * filled,
+                                                   (sell_price / buy_price - 1) * 100), parse_mode=ParseMode.MARKDOWN)
                     time.sleep(1)
                     self.sell(symbol, update)
                 else:
@@ -159,33 +162,30 @@ class Tun(object):
                 update.message.reply_text('%s sell filled, amount:%.8f' % (symbol, amount))
                 buy_price = self.get_buy_price(symbol)
                 if buy_price > 0:
-                    update.message.reply_text('%s possible profit: %.8f %.2f%%' % (
-                    symbol, (sell_price - buy_price) * amount, (sell_price / buy_price - 1) * 100))
+                    update.message.reply_text('%s possible profit: %.8f `%.2f%%`' %
+                                              (symbol, (sell_price - buy_price) * amount,
+                                               (sell_price / buy_price - 1) * 100), parse_mode=ParseMode.MARKDOWN)
             else:
                 update.message.reply_text('%s sell failed, status:%s' % (symbol, status))
                 self.exchange.cancel_order(order_id, symbol)
             break
 
     def clean_sell(self, symbol):
-        try:
-            last_price = self.exchange.fetch_ticker(symbol)['last']
-        except Exception:
-            return
         s = self.exchange.market(symbol)
         min_amount = s['limits']['amount']['min']
         precision = s['precision']['amount']
         min_cost = s['limits']['cost']['min']
-        amount = self.exchange.fetch_balance()['free'][s['base']]
-        amount = round(amount // min_amount * min_amount, precision)
+        amount = round(self.exchange.fetch_balance()['free'][s['base']] // min_amount * min_amount, precision)
+        last_price = self.exchange.fetch_ticker(symbol)['last']
         if amount == 0 or amount * last_price > min_cost:
             return
         self.exchange.create_market_sell_order(symbol, amount)
 
-    def get_values(self, base, quote, amount):
-        symbol = '{}/{}'.format(base, quote)
+    def get_values(self, symbol, amount):
+        s = self.exchange.market(symbol)
         ticker = self.exchange.fetch_ticker(symbol)
         quote_value = ticker['last'] * amount
-        usdt_value = self.exchange.fetch_ticker('{}/USDT'.format(quote))['last'] * quote_value
+        usdt_value = self.exchange.fetch_ticker('{}/USDT'.format(s['quote']))['last'] * quote_value
         return ticker['last'], ticker['change'], quote_value, usdt_value
 
     def balance(self, quote, update):
@@ -196,29 +196,35 @@ class Tun(object):
         text = 'Your account balance:  \n'
         text += '%s amount: %g  \n' % (quote, balance[quote])
         for base in sorted(balance.keys()):
-            amount = balance[base]
+            symbol = '{}/{}'.format(base, quote)
             try:
-                price, change, quote_value, usdt_value = self.get_values(base, quote, amount)
+                s = self.exchange.market(symbol)
             except Exception:
                 continue
-            symbol = '{}/{}'.format(base, quote)
-            min_cost = self.exchange.market(symbol)['limits']['cost']['min']
+            min_amount = s['limits']['amount']['min']
+            min_cost = s['limits']['cost']['min']
+            amount = balance[base]
+            if amount < min_amount:
+                continue
+            price, change, quote_value, usdt_value = self.get_values(symbol, amount)
             if quote_value < min_cost:
-                self.clean_sell(symbol)
+                thread = threading.Thread(target=self.clean_sell, args=(symbol,))
+                thread.start()
             else:
                 buy_price = self.get_buy_price(symbol)
                 if buy_price > 0:
                     profit = (price / buy_price - 1) * 100
                 else:
                     profit = 0
-                text += '%s amount: %.4f, price: %.8f,  value(%s): %.4f, value(USDT): %.2f, change(24h): %.2f%%, profit: %.2f%%  \n' % \
+                text += '%s amount: %.4f, price: %.8f,  value(%s): %.4f, value(USDT): %.2f, ' \
+                        'change(24h): %.2f%%, profit: `%.2f%%`  \n' % \
                         (base, amount, price, quote, quote_value, usdt_value, change, profit)
                 quote_total += quote_value
                 usdt_total += usdt_value
         quote_total += balance[quote]
         usdt_total += balance[quote] * self.exchange.fetch_ticker('{}/USDT'.format(quote))['last']
         text += 'Total in %s: %.8f, in USDT: %.2f' % (quote, quote_total, usdt_total)
-        update.message.reply_text(text)
+        update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 
     def crossed(self, series1, series2, direction=None):
         if isinstance(series1, np.ndarray):
@@ -243,7 +249,7 @@ class Tun(object):
 
     def st_signal(self, symbol, stop_loss, take_profit):
         s = self.exchange.market(symbol)
-        if self.exchange.fetch_balance()['free'][s['base']] > s['limits']['amount']['min']:
+        if self.exchange.fetch_balance()['total'][s['base']] > s['limits']['amount']['min']:
             buy_price = self.get_buy_price(symbol)
             if buy_price > 0:
                 sell_price = self.exchange.fetch_ticker(symbol)['last']
@@ -323,38 +329,53 @@ class Tun(object):
 
     def scan(self, quote, update, time_frames=TIME_FRAMES, stop_loss=-5, take_profit=5, auto_st=False):
         self.exchange.load_markets(reload=True)
+        balance = self.exchange.fetch_balance()['total']
+        symbols = []
+        for base in balance.keys():
+            amount = balance[base]
+            symbol = '{}/{}'.format(base, quote)
+            try:
+                if amount >= self.exchange.market(symbol)['limits']['amount']['min']:
+                    symbols.append(symbol)
+            except Exception:
+                continue
         for symbol in self.exchange.symbols:
             if symbol.split('/')[1] == quote:
                 time.sleep(0.1)
                 change = self.exchange.fetch_ticker(symbol)['change']
-                st = self.st_signal(symbol, stop_loss, take_profit)
-                tas = []
-                dls = []
-                ta_text = ''
-                dl_text = ''
-                score = 0
-                for time_frame in time_frames:
-                    time.sleep(0.1)
-                    t = self.ta_signal(symbol, time_frame)
-                    d = self.dl_signal(symbol, time_frame)
-                    tas.append(t)
-                    dls.append(d)
-                    ta_text += '{}: {}, '.format(time_frame, t)
-                    dl_text += '{}: {}, '.format(time_frame, d)
-                    if t == 'BUY':
-                        score += 1
-                    elif t == 'SELL':
-                        score += -1
-                    if d == 'BUY':
-                        score += 2
-                    elif d == 'SELL':
-                        score += -2
-                if st != 'neutral' or score <= -2 or score >= 2:
-                    text = '%s change(24h): %.2f%%  \n' \
-                           'ST signal: %s  \n' \
-                           'TA signal: %s  \n' \
-                           'DL signal: %s  \n' \
-                           'Score: %d%%' % (symbol, change, st, ta_text, dl_text, score / len(time_frames) / 3 * 100)
-                    update.message.reply_text(text)
-                    if auto_st:
-                        self.sell(symbol, update)
+                if change > 0 or symbol in symbols:
+                    if symbol in symbols:
+                        st = self.st_signal(symbol, stop_loss, take_profit)
+                    else:
+                        st = 'neutral'
+                    tas = []
+                    dls = []
+                    ta_text = ''
+                    dl_text = ''
+                    score = 0
+                    for time_frame in time_frames:
+                        time.sleep(0.1)
+                        t = self.ta_signal(symbol, time_frame)
+                        d = self.dl_signal(symbol, time_frame)
+                        tas.append(t)
+                        dls.append(d)
+                        ta_text += '{}: {}, '.format(time_frame, t)
+                        dl_text += '{}: {}, '.format(time_frame, d)
+                        if t == 'BUY':
+                            score += 1
+                        elif t == 'SELL':
+                            score += -1
+                        if d == 'BUY':
+                            score += 1
+                        elif d == 'SELL':
+                            score += -1
+                    if score > 0:
+                        text = '`+++ BUY +++`  \n%s change(24h): %.2f%%  \n' \
+                               'TA signal: %s  \nDL signal: %s  \nScore: `%d%%`' % \
+                               (symbol, change, ta_text, dl_text, score / len(time_frames) / 2 * 100)
+                        update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+                    elif symbol in symbols and (st != 'neutral' or score < 0):
+                        text = '`--- SELL ---`  \n%s change(24h): %.2f%%  \n' \
+                               'ST signal: %s  \nTA signal: %s  \nDL signal: %s  \nScore: `%d%%`' % \
+                               (symbol, change, st, ta_text, dl_text, score / len(time_frames) / 2 * 100)
+                        update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
