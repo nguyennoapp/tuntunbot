@@ -55,6 +55,8 @@ def main():
     plt.plot(index, output_data, label='Original price change')
     plt.plot(index, predicts_change, label='LSTM predict change')
     plt.legend()
+    plt.title('{}/{} {} price change back-test by deep-learning'.format(BASE, QUOTE, TIME_FRAME))
+    plt.tight_layout()
     plt.axhline(0)
     plt.axhline(-.5)
     plt.axhline(-1)

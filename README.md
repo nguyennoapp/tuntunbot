@@ -4,8 +4,7 @@ Telegram bot for cryptocurrencies trading
 # Features:
 - Support multi exchanges by using ccxt library (tested on Binance only)
 - Scan market using talib (TA) and deep-learning (DL) to find buy/sell signal
-ETH/BTC price change back-test by deep-learning:
-![graph](https://i.gyazo.com/239efa0db40b1ada1b4d9b369b626bb3.png)
+![graph](https://i.gyazo.com/2bb1579e28e4f8a8a6bb5b4a3cbf3aca.png)
 - Report account balance
 - Buy and sell with the best possible prices
 ![screenshot](https://i.gyazo.com/fa0394b7da048f537a078b4e9af925e6.png)
