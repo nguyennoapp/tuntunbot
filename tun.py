@@ -195,7 +195,6 @@ class Tun(object):
         text = 'Your account balance:  \n'
         text += '%s amount: %g  \n' % (quote, balance[quote])
         for base in sorted(balance.keys()):
-            time.sleep(0.1)
             amount = balance[base]
             try:
                 price, change, quote_value, usdt_value = self.get_values(base, quote, amount)
